@@ -1,6 +1,8 @@
-.PHONY: sanity
+.PHONY: setup sanity
+
+setup:
+    pip install -r requirements.txt
 
 sanity:
-	@echo "ERROR: You must implement 'make sanity' for your stack."
-	@echo "It must generate artifacts/sanity_output.json"
-	@exit 1
+    python -m app.sanity
+    @echo "-> artifacts/sanity_output.json written"

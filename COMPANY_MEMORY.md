@@ -1,7 +1,4 @@
-# COMPANY MEMORY
+# Company / Project Memory
 
-<!--
-Append reusable org-wide learnings that could help colleagues too.
-Do NOT dump raw conversation.
-Avoid secrets or sensitive information.
--->
+<!-- Persistent facts about the company, codebase, or project context. -->
+<!-- - [2025-06-01] Stack: Python 3.12, FAISS, Ollama (Mistral 7B). -->

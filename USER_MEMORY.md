@@ -1,7 +1,4 @@
-# USER MEMORY
+# User Memory
 
-<!--
-Append only high-signal, user-specific facts worth remembering.
-Do NOT dump raw conversation.
-Avoid secrets or sensitive information.
--->
+<!-- Persistent facts about the user that the agent should remember across sessions. -->
+<!-- - [2025-06-01] User prefers concise answers with code examples. -->

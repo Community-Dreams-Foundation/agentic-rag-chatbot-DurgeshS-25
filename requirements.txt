@@ -1,0 +1,12 @@
+# Core RAG stack
+pypdf>=4.0.0
+sentence-transformers>=2.7.0
+faiss-cpu>=1.8.0
+rank-bm25>=0.2.2
+numpy>=1.26.0
+tqdm>=4.66.0
+python-dotenv>=1.0.0
+
+# Optional: REST API layer (uncomment when ready)
+# fastapi>=0.111.0
+# uvicorn[standard]>=0.29.0
