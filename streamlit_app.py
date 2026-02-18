@@ -52,10 +52,10 @@ _CLASSIFIED_RE = re.compile(
 )
 _MEMORY_ONLY_RE = re.compile(
     r"(?i)\b("
-    r"i\s+prefer|i\s+like|i\s+love|i\s+enjoy|i'?m\s+into|i\s+am\s+into"
-    r"|my\s+name\s+is|call\s+me|i'?m\s+an?|i\s+am\s+an?"
+    r"i\s+prefer|i\s+like|i\s+love|i\s+enjoy|i[''\u2019]?m\s+into|i\s+am\s+into"
+    r"|my\s+name\s+is|call\s+me|i[''\u2019]?m\s+an?|i\s+am\s+an?"
     r"|my\s+role\s+is|i\s+work\s+as|i\s+am\s+working\s+as|send\s+me"
-    r"|don'?t\s+explain|don'?t\s+summarize|do\s+not\s+explain"
+    r"|don[''\u2019]?t\s+explain|don[''\u2019]?t\s+summarize|do\s+not\s+explain"
     r"|do\s+not\s+summarize|no\s+summary|no\s+explanation|no\s+briefing|no\s+brief"
     r"|our\s+team\s+(uses?|prefers?|follows?|relies?|always|never)"
     r"|we\s+use\b|the\s+bottleneck\s+is|everyone\s+uses?"
