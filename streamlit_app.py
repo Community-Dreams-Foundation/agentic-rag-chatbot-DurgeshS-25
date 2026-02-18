@@ -98,31 +98,49 @@ def _build_index():
         return None, []
 
     docs = ingest(UPLOADS_DIR)
-    chunks = chunk(docs, chunk_size=500, overlap=100)
+    raw_chunks = chunk(docs, chunk_size=500, overlap=100)
 
-    if not chunks:
+    if not raw_chunks:
         st.error("No text could be extracted from uploaded files.")
         return None, []
+
+    # ── balance chunks per document ────────────────────────────────────────────
+    # cap each document at 40 chunks so no single large file dominates the index
+    MAX_CHUNKS_PER_DOC = 40
+    from collections import defaultdict
+    chunks_by_doc = defaultdict(list)
+    for c in raw_chunks:
+        chunks_by_doc[c["doc_id"]].append(c)
+
+    all_chunks = []
+    for doc_id, doc_chunks in chunks_by_doc.items():
+        # evenly sample up to MAX_CHUNKS_PER_DOC chunks across the document
+        if len(doc_chunks) > MAX_CHUNKS_PER_DOC:
+            step = len(doc_chunks) / MAX_CHUNKS_PER_DOC
+            sampled = [doc_chunks[int(i * step)] for i in range(MAX_CHUNKS_PER_DOC)]
+        else:
+            sampled = doc_chunks
+        all_chunks.extend(sampled)
 
     # terminal summary
     print(f"\n{'='*60}")
     print(f"  DOCUMENT INDEXING SUMMARY")
     print(f"{'='*60}")
-    for fname, count in Counter(c['filename'] for c in chunks).items():
+    for fname, count in Counter(c['filename'] for c in all_chunks).items():
         print(f"  📄 {fname} → {count} chunks")
-    print(f"\n  Total chunks indexed: {len(chunks)}")
+    print(f"\n  Total chunks indexed: {len(all_chunks)}")
     print(f"{'─'*60}")
     print(f"  CHUNK PREVIEW (first 5)")
     print(f"{'─'*60}")
-    for i, c in enumerate(chunks[:5]):
+    for i, c in enumerate(all_chunks[:5]):
         print(f"\n  [{i+1}] {c['filename']}  |  page {c['page']}  |  {len(c['text'])} chars")
         print(f"  ID    : {c['chunk_id']}")
         print(f"  Text  : {c['text'][:120].replace(chr(10), ' ').strip()}...")
-    if len(chunks) > 5:
-        print(f"\n  ... and {len(chunks) - 5} more chunks")
+    if len(all_chunks) > 5:
+        print(f"\n  ... and {len(all_chunks) - 5} more chunks")
     print(f"\n{'='*60}\n")
 
-    index, meta = build_index(chunks)
+    index, meta = build_index(all_chunks)
     return index, meta
 
 @st.cache_resource(show_spinner="Loading index …")
@@ -282,7 +300,8 @@ with st.sidebar:
             dest = Path(UPLOADS_DIR) / f.name
             dest.write_bytes(f.read())
             saved.append(f.name)
-        if saved:
+        if saved and saved != st.session_state.get("last_uploaded"):
+            st.session_state["last_uploaded"] = saved
             st.success(f"✅ Saved: {', '.join(saved)}")
             with st.spinner("Indexing …"):
                 idx, cks = _force_rebuild()
@@ -311,8 +330,9 @@ if "index" not in st.session_state:
         st.session_state["index"]  = None
         st.session_state["chunks"] = []
 
-if "messages"  not in st.session_state: st.session_state["messages"]  = []
-if "rag_cache" not in st.session_state: st.session_state["rag_cache"] = {}
+if "messages"      not in st.session_state: st.session_state["messages"]      = []
+if "rag_cache"     not in st.session_state: st.session_state["rag_cache"]     = {}
+if "last_uploaded" not in st.session_state: st.session_state["last_uploaded"] = []
 
 # status banner
 if not _has_uploads() or st.session_state.get("index") is None:

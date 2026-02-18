@@ -1,1 +1,0 @@
-- [2026-02-18] Project uses FAISS in its stack
