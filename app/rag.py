@@ -187,7 +187,7 @@ def _repair_common_citation_mistakes(text: str) -> str:
     return _SOURCE_BLOCK_RE.sub(_fix_block, text)
 
 
-def _extract_citations(text: str) -> list[dict]:
+def _extract_citations (text: str) -> list[dict]:
     """
     Parse all strictly-formatted [source:<filename>#<chunk_id> p=<page>] markers.
     Only matches citations where page is a single integer.
@@ -253,10 +253,29 @@ def answer(
         raw_answer   = _ollama_generate(retry_prompt, model=model)
         citations    = _extract_citations(raw_answer)
 
-    # if still no citations after retry, return refusal
+    # if still no citations after retry, use fallback before refusing
     if not citations:
-        print("[rag] warning: still no valid citations after retry — returning refusal")
-        return {"answer": REFUSAL_MSG, "citations": []}
+        if raw_answer.strip() and REFUSAL_MSG not in raw_answer:
+            print("[rag] using top hit as fallback citation after retry")
+            top = context_chunks[0]
+            citations = [{
+                "filename": top["filename"],
+                "chunk_id": top["chunk_id"],
+                "page":     top["page"],
+            }]
+        else:
+            print("[rag] warning: still no valid citations after retry — returning refusal")
+            return {"answer": REFUSAL_MSG, "citations": []}
+
+    # if no citations but answer is non-empty and not refusal, use top hit as fallback citation
+    if not citations and raw_answer.strip() and REFUSAL_MSG not in raw_answer:
+        print("[rag] no citations extracted — using top hit as fallback citation")
+        top = context_chunks[0]
+        citations = [{
+            "filename": top["filename"],
+            "chunk_id": top["chunk_id"],
+            "page":     top["page"],
+        }]
 
     print(f"[rag] answer generated — {len(citations)} unique citation(s)")
 

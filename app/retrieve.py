@@ -13,7 +13,7 @@ Usage:
 
 from app.embed import load_index, embed_query
 
-DEFAULT_MODEL = "all-MiniLM-L6-v2"
+DEFAULT_MODEL = "multi-qa-MiniLM-L6-cos-v1"
 
 
 # ── public API ─────────────────────────────────────────────────────────────────

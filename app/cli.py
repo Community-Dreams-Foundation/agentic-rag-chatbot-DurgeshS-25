@@ -16,7 +16,10 @@ from pathlib import Path
 
 FAISS_INDEX_PATH = os.path.join("artifacts", "faiss.index")
 
-# ── security gate ──────────────────────────────────────────────────────────────
+REFUSAL_INJECTION    = "I cannot assist with that request."
+REFUSAL_CONFIDENTIAL = "I can't share confidential or classified details."
+
+# ── security: prompt injection ─────────────────────────────────────────────────
 
 _INJECTION_RE = re.compile(
     r"(?i)("
@@ -34,42 +37,36 @@ _INJECTION_RE = re.compile(
     r")"
 )
 
+# ── security: classified field requests ───────────────────────────────────────
+
+_CLASSIFIED_RE = re.compile(
+    r"(?i)\b(phone\s+number|email\s+address|cro|api\s?key|token|password|secret)\b"
+)
+
 def _is_malicious_input(text: str) -> bool:
-    """Return True if the input contains prompt injection or secret extraction patterns."""
     return bool(_INJECTION_RE.search(text))
+
+def _is_classified_request(text: str) -> bool:
+    return bool(_CLASSIFIED_RE.search(text))
 
 
 # ── memory-only detection ──────────────────────────────────────────────────────
 
 _MEMORY_ONLY_RE = re.compile(
     r"(?i)\b("
-    r"i\s+prefer"
-    r"|i\s+like"
-    r"|i\s+love"
-    r"|i\s+enjoy"
-    r"|i'?m\s+into"
-    r"|i\s+am\s+into"
-    r"|my\s+name\s+is"
-    r"|call\s+me"
-    r"|i'?m\s+a[n]?"
-    r"|i\s+am\s+a[n]?"
-    r"|my\s+role\s+is"
-    r"|i\s+work\s+as"
-    r"|i\s+am\s+working\s+as"
-    r"|send\s+me"
-    r"|don'?t\s+explain"
-    r"|don'?t\s+summarize"
-    r"|do\s+not\s+explain"
-    r"|do\s+not\s+summarize"
-    r"|no\s+summary"
-    r"|no\s+explanation"
-    r"|no\s+briefing"
-    r"|no\s+brief"
+    r"i\s+prefer|i\s+like|i\s+love|i\s+enjoy|i'?m\s+into|i\s+am\s+into"
+    r"|my\s+name\s+is|call\s+me|i'?m\s+an?|i\s+am\s+an?"
+    r"|my\s+role\s+is|i\s+work\s+as|i\s+am\s+working\s+as|send\s+me"
+    r"|don'?t\s+explain|don'?t\s+summarize|do\s+not\s+explain"
+    r"|do\s+not\s+summarize|no\s+summary|no\s+explanation|no\s+briefing|no\s+brief"
+    r"|our\s+team\s+(uses?|prefers?|follows?|relies?|always|never)"
+    r"|we\s+use\b|the\s+bottleneck\s+is"
+    r"|everyone\s+uses?"
     r")"
 )
 
 def _is_memory_only_input(text: str) -> bool:
-    """Return True if ANY fragment of the input is a user preference or identity statement."""
+    """True if ANY fragment (split on 'and') is a preference/identity statement."""
     fragments = [f.strip() for f in re.split(r"\band\b", text, flags=re.IGNORECASE) if f.strip()]
     return any(bool(_MEMORY_ONLY_RE.search(frag)) for frag in fragments)
 
@@ -78,7 +75,7 @@ def _is_memory_only_input(text: str) -> bool:
 
 _MEMORY_QUESTION_RE = re.compile(
     r"(?i)\b("
-    r"what\s+(do|did|don't|doesn't)\s+i\s+(like|love|enjoy|prefer|hate|want|need)"
+    r"what\s+(do|did|don'?t|doesn'?t)\s+i\s+(like|love|enjoy|prefer|hate|want|need)"
     r"|what\s+is\s+my\s+(name|role|job|preference|hobby|interest)"
     r"|who\s+am\s+i"
     r"|what\s+are\s+my\s+(preferences?|interests?|hobbies|goals?)"
@@ -87,12 +84,9 @@ _MEMORY_QUESTION_RE = re.compile(
 )
 
 def _is_memory_question(text: str) -> bool:
-    """Return True if the user is asking about something stored in their memory."""
     return bool(_MEMORY_QUESTION_RE.search(text))
 
-
 def _answer_from_memory(query: str) -> str:
-    """Build a plain-text answer from USER_MEMORY.md contents."""
     from app.memory import load_memory, USER_MEMORY_PATH
     contents = load_memory(USER_MEMORY_PATH).strip()
     if not contents:
@@ -107,7 +101,7 @@ def _answer_from_memory(query: str) -> str:
     return "Based on what I know about you:\n" + "\n".join(f"  • {f}" for f in facts)
 
 
-# ── help text ──────────────────────────────────────────────────────────────────
+# ── help banner ────────────────────────────────────────────────────────────────
 
 CHAT_HELP = """
 ┌─────────────────────────────────────────────────────┐
@@ -123,24 +117,30 @@ CHAT_HELP = """
 
 # ── index helpers ──────────────────────────────────────────────────────────────
 
-def _build(source_dir: str):
-    """Ingest → chunk → embed. Returns (index, chunks)."""
+def _build(source_dir: str, verbose: bool = False):
     from app.ingest import ingest
     from app.chunk  import chunk
     from app.embed  import build_index
-
     print(f"[cli] ingesting documents from '{source_dir}' …")
     docs = ingest(source_dir)
     if not docs:
-        print("[cli] no documents found — add files to the source directory and retry.")
+        print("[cli] no documents found — add files and retry.")
         sys.exit(1)
-    chunks = chunk(docs)
+    chunks = chunk(docs, chunk_size=500, overlap=100)
+
+    if verbose:
+        print(f"\n[verbose] ── chunk preview ──────────────────────────")
+        for i, c in enumerate(chunks):
+            print(f"\n  Chunk {i+1}/{len(chunks)} | {c['filename']} | p{c['page']} | {len(c['text'])} chars")
+            print(f"  ID: {c['chunk_id']}")
+            print(f"  Text: {c['text'][:150].replace(chr(10), ' ')}...")
+        print(f"\n[verbose] total chunks: {len(chunks)}")
+        print(f"[verbose] ────────────────────────────────────────────\n")
+
     index, meta = build_index(chunks)
     return index, meta
 
-
 def _load():
-    """Load existing index from artifacts/."""
     from app.retrieve import load_retriever_assets
     return load_retriever_assets()
 
@@ -148,7 +148,26 @@ def _load():
 # ── commands ───────────────────────────────────────────────────────────────────
 
 def cmd_ingest(args):
-    _build(args.source_dir)
+    from app.ingest import ingest
+    from app.chunk  import chunk
+    from app.embed  import build_index
+    print(f"[cli] ingesting documents from '{args.source_dir}' …")
+    docs = ingest(args.source_dir)
+    if not docs:
+        print("[cli] no documents found — add files and retry.")
+        sys.exit(1)
+    chunks = chunk(docs, chunk_size=500, overlap=100)
+
+    if args.verbose:
+        print(f"\n[verbose] ── chunk preview ──────────────────────────")
+        for i, c in enumerate(chunks):
+            print(f"\n  Chunk {i+1}/{len(chunks)} | {c['filename']} | p{c['page']} | {len(c['text'])} chars")
+            print(f"  ID: {c['chunk_id']}")
+            print(f"  Text: {c['text'][:150].replace(chr(10), ' ')}...")
+        print(f"\n[verbose] total chunks: {len(chunks)}")
+        print(f"[verbose] ────────────────────────────────────────────\n")
+
+    build_index(chunks)
     print("[cli] index built successfully.")
 
 
@@ -157,7 +176,6 @@ def cmd_chat(args):
     from app.rag      import answer
     from app.memory   import load_memory, maybe_write_memory, USER_MEMORY_PATH, COMPANY_MEMORY_PATH
 
-    # ── load or build index ────────────────────────────────────────────────────
     needs_build = args.rebuild or not Path(FAISS_INDEX_PATH).exists()
     if needs_build:
         index, chunks = _build(args.source_dir)
@@ -167,7 +185,6 @@ def cmd_chat(args):
 
     print(CHAT_HELP)
 
-    # ── chat loop ──────────────────────────────────────────────────────────────
     while True:
         try:
             user_input = input("you> ").strip()
@@ -198,7 +215,6 @@ def cmd_chat(args):
             continue
 
         if user_input.lower() == "/reindex":
-            print("[cli] rebuilding index …")
             try:
                 index, chunks = _build(args.source_dir)
                 print("[cli] reindex complete.")
@@ -206,20 +222,25 @@ def cmd_chat(args):
                 print(f"[cli] reindex failed: {e}")
             continue
 
-        # ── security gate ──────────────────────────────────────────────────────
+        # ── prompt injection guard ─────────────────────────────────────────────
         if _is_malicious_input(user_input):
-            print("bot> I cannot assist with that request.\n")
+            print(f"bot> {REFUSAL_INJECTION}\n")
             continue
 
-        # ── memory question (what do I like / what is my name etc.) ───────────
+        # ── classified / confidential field guard ──────────────────────────────
+        if _is_classified_request(user_input):
+            print(f"bot> {REFUSAL_CONFIDENTIAL}\n")
+            continue
+
+        # ── memory question ────────────────────────────────────────────────────
         if _is_memory_question(user_input):
             print(f"\nbot> {_answer_from_memory(user_input)}\n")
             continue
 
-        # ── memory-only shortcut (preference / identity statements) ────────────
+        # ── memory-only input (preferences / identity) ─────────────────────────
         if _is_memory_only_input(user_input):
             fragments = [f.strip() for f in re.split(r"\band\b", user_input, flags=re.IGNORECASE) if f.strip()]
-            any_written = False
+            any_written      = False
             any_already_known = False
             for fragment in fragments:
                 mem_result = maybe_write_memory(fragment, "")
@@ -236,10 +257,9 @@ def cmd_chat(args):
                 print("bot> Got it — I'll remember that.\n")
             continue
 
-        # ── normal query ───────────────────────────────────────────────────────
+        # ── normal RAG query ───────────────────────────────────────────────────
         try:
             hits = retrieve(user_input, index, chunks, top_k=args.top_k)
-
             if not hits:
                 print("bot> I couldn't find any relevant content in the documents.\n")
                 continue
@@ -247,14 +267,11 @@ def cmd_chat(args):
             out = answer(user_input, hits, model=args.model)
             print(f"\nbot> {out['answer']}\n")
 
-            # citations summary
             if out["citations"]:
-                srcs = ", ".join(
-                    f"{c['filename']} p{c['page']}" for c in out["citations"]
-                )
+                srcs = ", ".join(f"{c['filename']} p{c['page']}" for c in out["citations"])
                 print(f"     📄 sources: {srcs}\n")
 
-            # memory — user input only, never the answer (avoids citation pattern matches)
+            # memory scan on user input ONLY — never pass assistant answer
             mem_result = maybe_write_memory(user_input, "")
             if mem_result.get("written"):
                 print(f"     🧠 memory updated ({mem_result['target']}): {mem_result['summary']}\n")
@@ -279,24 +296,18 @@ def main():
     sub = parser.add_subparsers(dest="command", metavar="command")
     sub.required = True
 
-    # ingest
     p_ingest = sub.add_parser("ingest", help="Build or rebuild the vector index")
-    p_ingest.add_argument("--source-dir", default="sample_docs",
-                          help="Directory containing documents (default: sample_docs)")
+    p_ingest.add_argument("--source-dir", default="sample_docs")
+    p_ingest.add_argument("--verbose", "-v", action="store_true",
+                          help="Print chunk details during indexing")
 
-    # chat
     p_chat = sub.add_parser("chat", help="Start an interactive chat session")
-    p_chat.add_argument("--source-dir", default="sample_docs",
-                        help="Directory containing documents (default: sample_docs)")
-    p_chat.add_argument("--model",   default="mistral",
-                        help="Ollama model name (default: mistral)")
-    p_chat.add_argument("--top-k",   default=5, type=int,
-                        help="Number of chunks to retrieve (default: 5)")
-    p_chat.add_argument("--rebuild", action="store_true",
-                        help="Force rebuild the index before chatting")
+    p_chat.add_argument("--source-dir", default="sample_docs")
+    p_chat.add_argument("--model",   default="mistral")
+    p_chat.add_argument("--top-k",   default=5, type=int)
+    p_chat.add_argument("--rebuild", action="store_true")
 
-    # sanity
-    sub.add_parser("sanity", help="Run sanity checks and write artifacts/sanity_output.json")
+    sub.add_parser("sanity", help="Run sanity checks")
 
     args = parser.parse_args()
 

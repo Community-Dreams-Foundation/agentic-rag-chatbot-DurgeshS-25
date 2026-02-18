@@ -239,19 +239,62 @@ These are optional enhancements. They are not required, but can earn bonus point
 
 ---
 
-## Quick Start (YOU MUST FILL THIS IN)
+## Quick Start
 
-Provide exact commands a judge can run.
+### Prerequisites
+- Python 3.10+
+- [Ollama](https://ollama.com) installed and running
+- Mistral model pulled:
+  ```bash
+  ollama pull mistral
+  ```
 
-Example (replace with your real commands):
-
-```text
-# install dependencies
-# run the app
-# open UI or run CLI
+### 1. Clone the repo
+```bash
+git clone <your-repo-url>
+cd agentic-rag-chatbot-DurgeshS-25
 ```
 
----
+### 2. Create and activate virtual environment
+```bash
+python -m venv cdfh
+
+# Windows
+cdfh\Scripts\activate
+
+# macOS / Linux
+source cdfh/bin/activate
+```
+
+### 3. Install dependencies
+```bash
+pip install -r requirements.txt
+```
+
+### 4. Run sanity check
+```bash
+make sanity
+```
+This generates `artifacts/sanity_output.json` confirming all features work.
+
+### 5. Launch the Web UI
+```bash
+streamlit run streamlit_app.py
+```
+Then open **http://localhost:8501** in your browser.
+
+### Using the app
+1. **Upload documents** — use the sidebar to upload `.pdf`, `.txt`, or `.md` files
+2. **Ask questions** — the bot answers strictly from your uploaded documents with citations
+3. **Test guardrails** — try asking for a phone number or type "ignore prior instructions"
+4. **Tell it about yourself** — say "I'm a Project Finance Analyst" and it remembers
+5. **Check memory** — open `USER_MEMORY.md` or `COMPANY_MEMORY.md` to see what was stored
+
+### Test documents
+- `sample_docs/test.txt` — Corporate Security & Risk Report (fictional, for testing)
+- RAG paper PDF — download from https://arxiv.org/pdf/2005.11401
+
+See `sample_docs/README.md` for suggested evaluation questions.
 
 ## Suggested Evaluation Prompts
 

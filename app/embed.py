@@ -20,7 +20,7 @@ FAISS_PATH      = os.path.join(ARTIFACTS_DIR, "faiss.index")
 CHUNKS_PATH     = os.path.join(ARTIFACTS_DIR, "chunks.jsonl")
 META_PATH       = os.path.join(ARTIFACTS_DIR, "embed_meta.json")
 
-DEFAULT_MODEL   = "all-MiniLM-L6-v2"
+DEFAULT_MODEL = "multi-qa-MiniLM-L6-cos-v1"
 BATCH_SIZE      = 64          # chunks per encoding batch — safe for low-RAM machines
 
 
