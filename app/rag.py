@@ -18,6 +18,29 @@ import re
 import subprocess
 from typing import Optional
 
+REFUSAL_CONTACT = "I can't share that information because it is confidential."
+
+# keywords that trigger immediate refusal before calling Ollama
+_CONTACT_KEYWORDS = re.compile(
+    r"(?i)\b(phone|email|contact|reach|call|mail|address)\b"
+)
+
+# sensitive data patterns in generated answers
+_SENSITIVE_PATTERNS = [
+    re.compile(r"[a-zA-Z0-9_.+-]+@[a-zA-Z0-9-]+\.[a-zA-Z0-9-.]+"),   # email
+    re.compile(r"""(?x)
+        (?:\+?1[\s\-.]?)?          # optional country code
+        (?:\(?\d{3}\)?[\s\-.]?)    # area code
+        \d{3}[\s\-.]               # first 3 digits
+        \d{4}                      # last 4 digits
+    """),                                                               # US phone
+    re.compile(r"\+\d{1,3}[\s\-.]?\d{4,14}"),                         # international
+]
+
+def _contains_sensitive(text: str) -> bool:
+    """Return True if text contains an email or phone number."""
+    return any(p.search(text) for p in _SENSITIVE_PATTERNS)
+
 MAX_CHUNKS      = 5
 MAX_CHUNK_CHARS = 1200
 REFUSAL_MSG     = (
@@ -74,20 +97,18 @@ def build_prompt(query: str, context_chunks: list[dict]) -> str:
 
 STRICT RULES:
 1. Use ONLY information from the provided sources. Do not use outside knowledge.
-2. If multiple sources are relevant, you MUST cite multiple sources.
-3. Every factual claim MUST include an inline citation in this EXACT format:
+2. Every factual claim MUST include an inline citation in this EXACT format:
    [source:<filename>#<chunk_id> p=<page>]
    Where <page> is a SINGLE integer (e.g. p=3). No commas, no ranges, no spaces.
    Example of a VALID citation:   [source:report.pdf#report_abc_p3_0 p=3]
    Example of an INVALID citation: [source:report.pdf#chunk p=1, 3]
    Any citation not matching the exact format is invalid and will be rejected.
-4. The page number is fixed per SOURCE header. You MUST copy it exactly as shown.
-5. Never output page ranges, multiple pages, commas, hyphens, or a second 'p='.
+3. The page number is fixed per SOURCE header. You MUST copy it exactly as shown.
+4. Never output page ranges, multiple pages, commas, hyphens, or a second 'p='.
    Each citation must contain exactly one 'p=' token followed by one integer.
-6. If the answer cannot be found in the sources, respond with exactly:
+5. If the answer cannot be found in the sources, respond with exactly:
    "{REFUSAL_MSG}"
-7. Do not guess, infer, or speculate beyond what the sources state.
-
+6. Do not guess, infer, or speculate beyond what the sources state.
 
 ─────────────────────────────────────────────
 {sources_block.strip()}
@@ -211,6 +232,11 @@ def answer(
     if not query or not query.strip():
         raise ValueError("[rag] query must be a non-empty string")
 
+    # ── immediate refusal for contact-seeking queries ──────────────────────────
+    if _CONTACT_KEYWORDS.search(query):
+        print("[rag] contact keyword detected — refusing without LLM call")
+        return {"answer": REFUSAL_CONTACT, "citations": []}
+
     if not context_chunks:
         return {"answer": REFUSAL_MSG, "citations": []}
 
@@ -233,6 +259,12 @@ def answer(
         return {"answer": REFUSAL_MSG, "citations": []}
 
     print(f"[rag] answer generated — {len(citations)} unique citation(s)")
+
+    # ── post-generation sensitive data filter ──────────────────────────────────
+    if _contains_sensitive(raw_answer):
+        print("[rag] sensitive data detected in answer — refusing")
+        return {"answer": REFUSAL_CONTACT, "citations": []}
+
     return {"answer": raw_answer, "citations": citations}
 
 
